@@ -1,0 +1,88 @@
+#!/bin/bash
+#
+# Launch Claude Code in a sandboxed container scoped to a specific project
+#
+# Usage:
+#   sandbox-run ~/repos/my-project        # Start or resume container
+#   sandbox-run --list                    # List sandbox containers
+#   sandbox-run --stop <project>          # Stop a container
+#   sandbox-run --rm <project>            # Remove a container
+#
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Handle special commands
+case "$1" in
+    --list)
+        echo "Claude sandbox containers:"
+        docker ps -a --filter "name=sandbox-" --format "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}"
+        exit 0
+        ;;
+    --stop)
+        docker stop "sandbox-${2}" 2>/dev/null && echo "Stopped sandbox-${2}" || echo "Container not found: sandbox-${2}"
+        exit 0
+        ;;
+    --rm)
+        docker rm -f "sandbox-${2}" 2>/dev/null && echo "Removed sandbox-${2}" || echo "Container not found: sandbox-${2}"
+        exit 0
+        ;;
+esac
+
+PROJECT_PATH="${1:-.}"
+EXTRA_ARGS="${@:2}"
+
+# Resolve to absolute path
+PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
+PROJECT_NAME="$(basename "$PROJECT_PATH")"
+CONTAINER_NAME="sandbox-${PROJECT_NAME}"
+
+# Ensure data directory exists for Claude persistence
+mkdir -p "$SCRIPT_DIR/data"
+
+# Check for API key
+if [ -z "$ANTHROPIC_API_KEY" ]; then
+    echo "Error: ANTHROPIC_API_KEY not set"
+    echo "Export it or add to your shell profile"
+    exit 1
+fi
+
+# Get SSH agent socket from inside Colima VM (not the Mac's socket)
+VM_SSH_SOCK=$(colima ssh -- bash -c 'echo $SSH_AUTH_SOCK' 2>/dev/null | tr -d '\r\n')
+if [ -z "$VM_SSH_SOCK" ]; then
+    echo "Warning: Could not get SSH agent socket from Colima VM"
+    echo "SSH agent forwarding may not work"
+    VM_SSH_SOCK="/tmp/no-ssh-agent"
+fi
+
+# Check if container already exists
+if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    # Container exists
+    if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        # Already running - attach to it
+        echo "Attaching to running container: $CONTAINER_NAME"
+        docker attach "$CONTAINER_NAME"
+    else
+        # Stopped - start and attach
+        echo "Resuming container: $CONTAINER_NAME"
+        docker start -ai "$CONTAINER_NAME"
+    fi
+else
+    # Create new container
+    echo "Creating new sandbox for: $PROJECT_NAME"
+    echo "Project path: $PROJECT_PATH"
+    echo ""
+
+    docker run -it \
+        --name "$CONTAINER_NAME" \
+        -v "$PROJECT_PATH":/workspace \
+        -v "$SCRIPT_DIR/data":/home/sandbox/.claude \
+        -v "$VM_SSH_SOCK":/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent \
+        -v "$HOME/.gitconfig":/home/sandbox/.gitconfig:ro \
+        -e ANTHROPIC_API_KEY \
+        -e TERM="$TERM" \
+        -w /workspace \
+        claude-sandbox \
+        $EXTRA_ARGS
+fi
