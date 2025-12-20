@@ -4,6 +4,7 @@
 #
 # Usage:
 #   sandbox-run ~/repos/my-project        # Start or resume container
+#   sandbox-run ~/repos/proj -v ~/other:/other:ro  # With extra mount
 #   sandbox-run --list                    # List sandbox containers
 #   sandbox-run --stop <project>          # Stop a container
 #   sandbox-run --rm <project>            # Remove a container
@@ -31,15 +32,35 @@ case "$1" in
 esac
 
 PROJECT_PATH="${1:-.}"
-EXTRA_ARGS="${@:2}"
+shift || true
+
+# Parse volume mounts (-v) from remaining args
+EXTRA_VOLUMES=()
+EXTRA_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -v|--volume)
+            EXTRA_VOLUMES+=("-v" "$2")
+            shift 2
+            ;;
+        -v=*|--volume=*)
+            EXTRA_VOLUMES+=("-v" "${1#*=}")
+            shift
+            ;;
+        *)
+            EXTRA_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
 
 # Resolve to absolute path
 PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
 PROJECT_NAME="$(basename "$PROJECT_PATH")"
 CONTAINER_NAME="sandbox-${PROJECT_NAME}"
 
-# Ensure data directory exists for Claude persistence
-mkdir -p "$SCRIPT_DIR/data"
+# Ensure data directory exists for Claude persistence (per-project)
+mkdir -p "$SCRIPT_DIR/data/$PROJECT_NAME"
 
 # Check for API key
 if [ -z "$ANTHROPIC_API_KEY" ]; then
@@ -77,12 +98,21 @@ else
     docker run -it \
         --name "$CONTAINER_NAME" \
         -v "$PROJECT_PATH":/workspace \
-        -v "$SCRIPT_DIR/data":/home/sandbox/.claude \
+        -v "$SCRIPT_DIR/data/$PROJECT_NAME":/home/sandbox/.claude \
         -v "$VM_SSH_SOCK":/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent \
         -v "$HOME/.gitconfig":/home/sandbox/.gitconfig:ro \
+        "${EXTRA_VOLUMES[@]}" \
         -e ANTHROPIC_API_KEY \
+        ${OPENAI_API_KEY:+-e OPENAI_API_KEY} \
+        ${GOOGLE_API_KEY:+-e GOOGLE_API_KEY} \
+        ${GEMINI_API_KEY:+-e GEMINI_API_KEY} \
+        ${MISTRAL_API_KEY:+-e MISTRAL_API_KEY} \
+        ${GROQ_API_KEY:+-e GROQ_API_KEY} \
+        ${COHERE_API_KEY:+-e COHERE_API_KEY} \
+        ${HUGGINGFACE_API_KEY:+-e HUGGINGFACE_API_KEY} \
+        ${REPLICATE_API_TOKEN:+-e REPLICATE_API_TOKEN} \
         -e TERM="$TERM" \
         -w /workspace \
         claude-sandbox \
-        $EXTRA_ARGS
+        "${EXTRA_ARGS[@]}"
 fi
