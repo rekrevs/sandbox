@@ -59,9 +59,6 @@ PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
 PROJECT_NAME="$(basename "$PROJECT_PATH")"
 CONTAINER_NAME="sandbox-${PROJECT_NAME}"
 
-# Ensure data directory exists for Claude persistence (per-project)
-mkdir -p "$SCRIPT_DIR/data/$PROJECT_NAME"
-
 # Check for API key
 if [ -z "$ANTHROPIC_API_KEY" ]; then
     echo "Error: ANTHROPIC_API_KEY not set"
@@ -98,7 +95,7 @@ else
     docker run -it \
         --name "$CONTAINER_NAME" \
         -v "$PROJECT_PATH":/workspace \
-        -v "$SCRIPT_DIR/data/$PROJECT_NAME":/home/sandbox/.claude \
+        -v "$HOME/.claude":/home/sandbox/.claude \
         -v "$VM_SSH_SOCK":/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent \
         -v "$HOME/.gitconfig":/home/sandbox/.gitconfig:ro \
         "${EXTRA_VOLUMES[@]}" \
