@@ -85,6 +85,7 @@ Claude Code supports two authentication methods:
 
 These are passed through if set:
 
+- `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
 - `GOOGLE_API_KEY` / `GEMINI_API_KEY`
 - `MISTRAL_API_KEY`
