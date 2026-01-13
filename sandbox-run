@@ -59,13 +59,6 @@ PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
 PROJECT_NAME="$(basename "$PROJECT_PATH")"
 CONTAINER_NAME="sandbox-${PROJECT_NAME}"
 
-# Check for API key
-if [ -z "$ANTHROPIC_API_KEY" ]; then
-    echo "Error: ANTHROPIC_API_KEY not set"
-    echo "Export it or add to your shell profile"
-    exit 1
-fi
-
 # Get SSH agent socket from inside Colima VM (not the Mac's socket)
 VM_SSH_SOCK=$(colima ssh -- bash -c 'echo $SSH_AUTH_SOCK' 2>/dev/null | tr -d '\r\n')
 if [ -z "$VM_SSH_SOCK" ]; then
